@@ -2,48 +2,53 @@
   "keys": [
     {
       "key": "ocj_starteam01",
-      "name": "团队成员 01",
+      "name": "Team Member 01",
       "maxConcurrent": 3,
       "used": true,
-      "usedBy": "阿龙虾",
+      "usedBy": "Lobster Agent",
       "usedByAgentId": "agent_1772347959385_px4w",
       "usedAt": "2026-03-01T14:52:39.385922",
       "reusable": true
     },
     {
       "key": "ocj_starteam02",
-      "name": "团队成员 02",
+      "name": "Team Member 02",
       "maxConcurrent": 3
     },
     {
       "key": "ocj_starteam03",
-      "name": "团队成员 03",
+      "name": "Team Member 03",
       "maxConcurrent": 3
     },
     {
       "key": "ocj_starteam04",
-      "name": "团队成员 04",
+      "name": "Team Member 04",
       "maxConcurrent": 3
     },
     {
       "key": "ocj_starteam05",
-      "name": "团队成员 05",
+      "name": "Team Member 05",
       "maxConcurrent": 3
     },
     {
       "key": "ocj_starteam06",
-      "name": "团队成员 06",
+      "name": "Team Member 06",
       "maxConcurrent": 3
     },
     {
       "key": "ocj_starteam07",
-      "name": "团队成员 07",
+      "name": "Team Member 07",
       "maxConcurrent": 3
     },
     {
       "key": "ocj_starteam08",
-      "name": "团队成员 08",
-      "maxConcurrent": 3
+      "name": "Team Member 08",
+      "maxConcurrent": 3,
+      "used": false,
+      "usedBy": null,
+      "usedByAgentId": null,
+      "usedAt": null,
+      "reusable": true
     }
   ]
 }

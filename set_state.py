@@ -1,59 +1,67 @@
 #!/usr/bin/env python3
-"""简单的状态更新工具，用于测试 Star Office UI"""
+"""Simple state update helper for Star Office UI."""
 
+from __future__ import annotations
+
+from datetime import datetime
 import json
 import os
 import sys
-from datetime import datetime
 
-STATE_FILE = "/root/.openclaw/workspace/star-office-ui/state.json"
+STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json")
 
 VALID_STATES = [
-    "idle",
-    "writing",
-    "researching",
-    "executing",
-    "syncing",
-    "error"
+    "standby",
+    "working",
+    "research",
+    "running",
+    "sync",
+    "incident",
 ]
 
-def load_state():
+
+def load_state() -> dict:
     if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(STATE_FILE, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+            if isinstance(payload, dict):
+                return payload
+
     return {
-        "state": "idle",
-        "detail": "待命中...",
+        "state": "standby",
+        "detail": "Standing by.",
         "progress": 0,
-        "updated_at": datetime.now().isoformat()
+        "updated_at": datetime.now().isoformat(),
     }
 
-def save_state(state):
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+
+def save_state(state: dict) -> None:
+    with open(STATE_FILE, "w", encoding="utf-8") as handle:
+        json.dump(state, handle, ensure_ascii=False, indent=2)
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("用法: python set_state.py <state> [detail]")
-        print(f"状态选项: {', '.join(VALID_STATES)}")
-        print("\n例子:")
-        print("  python set_state.py idle")
-        print("  python set_state.py researching \"在查 Godot MCP...\"")
-        print("  python set_state.py writing \"在写热点日报模板...\"")
+        print("Usage: python3 set_state.py <state> [detail]")
+        print(f"Valid states: {', '.join(VALID_STATES)}")
+        print("\nExamples:")
+        print('  python3 set_state.py standby "Ready for next task"')
+        print('  python3 set_state.py research "Investigating API behavior"')
+        print('  python3 set_state.py incident "Triage in progress"')
         sys.exit(1)
-    
-    state_name = sys.argv[1]
+
+    state_name = sys.argv[1].strip().lower()
     detail = sys.argv[2] if len(sys.argv) > 2 else ""
-    
+
     if state_name not in VALID_STATES:
-        print(f"无效状态: {state_name}")
-        print(f"有效选项: {', '.join(VALID_STATES)}")
+        print(f"Invalid state: {state_name}")
+        print(f"Valid states: {', '.join(VALID_STATES)}")
         sys.exit(1)
-    
-    state = load_state()
-    state["state"] = state_name
-    state["detail"] = detail
-    state["updated_at"] = datetime.now().isoformat()
-    
-    save_state(state)
-    print(f"状态已更新: {state_name} - {detail}")
+
+    current = load_state()
+    current["state"] = state_name
+    current["detail"] = detail
+    current["updated_at"] = datetime.now().isoformat()
+
+    save_state(current)
+    print(f"State updated: {state_name} - {detail}")

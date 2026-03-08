@@ -1,194 +1,227 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>加入 Star 的像素办公室</title>
-    <style>
-        @font-face {
-            font-family: 'ArkPixel';
-            src: url('/static/fonts/ark-pixel-12px-proportional-zh_cn.ttf.woff2') format('woff2');
-            font-weight: normal;
-            font-style: normal;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #1a1a2e;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            font-family: 'ArkPixel', 'Courier New', monospace;
-            padding: 40px 20px;
-            gap: 30px;
-            color: #fff;
-        }
-        h1 {
-            color: #ffd700;
-            font-size: 24px;
-            text-align: center;
-        }
-        .container {
-            background: #2c2f3a;
-            border: 3px solid #e94560;
-            border-radius: 12px;
-            padding: 24px;
-            width: 100%;
-            max-width: 480px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.6);
-        }
-        .form-group {
-            margin-bottom: 18px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 14px;
-            color: #ddd;
-        }
-        input, select {
-            width: 100%;
-            padding: 10px 12px;
-            font-family: 'ArkPixel', monospace;
-            font-size: 14px;
-            border: 2px solid #555;
-            border-radius: 6px;
-            background: #3a3f4f;
-            color: #fff;
-        }
-        button {
-            width: 100%;
-            padding: 12px;
-            font-family: 'ArkPixel', monospace;
-            font-size: 16px;
-            border: 2px solid #e94560;
-            border-radius: 6px;
-            background: #e94560;
-            color: #fff;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        button:hover {
-            background: #ff6b81;
-        }
-        .status {
-            margin-top: 16px;
-            padding: 12px;
-            border-radius: 6px;
-            text-align: center;
-            font-size: 14px;
-        }
-        .status.ok {
-            background: rgba(76, 175, 80, 0.2);
-            color: #4caf50;
-            border: 2px solid #4caf50;
-        }
-        .status.error {
-            background: rgba(244, 67, 54, 0.2);
-            color: #f44336;
-            border: 2px solid #f44336;
-        }
-        .note {
-            font-size: 12px;
-            color: #888;
-            margin-top: 16px;
-            text-align: center;
-            line-height: 1.8;
-        }
-        .note a { word-break: break-all; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Join Star Lobster Office</title>
+  <style>
+    @font-face {
+      font-family: "ArkPixel";
+      src: url("/static/fonts/ark-pixel-12px-proportional-latin.ttf.woff2") format("woff2");
+      font-weight: normal;
+      font-style: normal;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a2e;
+      color: #fff;
+      font-family: "ArkPixel", "Courier New", monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 24px;
+      padding: 36px 18px;
+    }
+
+    h1 {
+      color: #ffd700;
+      font-size: 24px;
+      text-align: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 500px;
+      background: #2c2f3a;
+      border: 3px solid #e94560;
+      border-radius: 12px;
+      padding: 22px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: #d1d5db;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 2px solid #555;
+      background: #3a3f4f;
+      color: #fff;
+      font-family: "ArkPixel", monospace;
+      font-size: 13px;
+    }
+
+    button {
+      width: 100%;
+      min-height: 44px;
+      border-radius: 6px;
+      border: 2px solid #e94560;
+      background: #e94560;
+      color: #fff;
+      font-family: "ArkPixel", monospace;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      background: #ff6b81;
+    }
+
+    #leaveBtn {
+      margin-top: 10px;
+      background: #555;
+      border-color: #555;
+    }
+
+    #leaveBtn:hover {
+      background: #666;
+    }
+
+    .status {
+      margin-top: 16px;
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center;
+      font-size: 13px;
+      display: none;
+    }
+
+    .status.ok {
+      background: rgba(76, 175, 80, 0.2);
+      border: 2px solid #4caf50;
+      color: #4caf50;
+    }
+
+    .status.error {
+      background: rgba(244, 67, 54, 0.2);
+      border: 2px solid #f44336;
+      color: #f44336;
+    }
+
+    .note {
+      max-width: 560px;
+      text-align: center;
+      color: #9ca3af;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .note a {
+      color: #ffd700;
+      text-decoration: underline;
+      word-break: break-all;
+    }
+  </style>
 </head>
 <body>
-    <h1>⭐ 加入 Star 的像素办公室</h1>
-    <div class="container">
-        <div class="form-group">
-            <label>你的名字（会显示在办公室）</label>
-            <input type="text" id="agentName" placeholder="例如：小龙虾助手" maxlength="20">
-        </div>
-        <!-- 状态与细节改为自动同步，不在 join 页面填写 -->
-        <div class="form-group">
-            <label>Agent 接入密钥（一次性）</label>
-            <input type="text" id="joinKey" placeholder="请输入你拿到的 join key" maxlength="64">
-        </div>
-        <button id="joinBtn">加入办公室</button>
-        <button id="leaveBtn" style="margin-top:10px; background:#555; border-color:#555;">离开办公室</button>
-        <div id="status" class="status" style="display:none;"></div>
-    </div>
-    <div class="note">
-        ⚠️ 注意：join 页面仅需要名字 + 一次性 join key<br>
-        状态与状态细节会由 agent 后续自动推送同步
-        <br><br>
-        📌 邀请说明：
-        <a href="/invite" style="color:#ffd700; text-decoration: underline;">https://office.example.com/invite</a>
+  <h1>Join Star Lobster Office</h1>
+
+  <div class="container">
+    <div class="form-group">
+      <label>Your display name</label>
+      <input type="text" id="agentName" placeholder="Example: Lobster Assistant" maxlength="20">
     </div>
 
-    <script>
-        const joinBtn = document.getElementById('joinBtn');
-        const leaveBtn = document.getElementById('leaveBtn');
-        const statusDiv = document.getElementById('status');
-        const agentNameInput = document.getElementById('agentName');
-        const joinKeyInput = document.getElementById('joinKey');
+    <div class="form-group">
+      <label>Join key</label>
+      <input type="text" id="joinKey" placeholder="Enter your one-time join key" maxlength="64">
+    </div>
 
-        function showStatus(text, ok) {
-            statusDiv.style.display = 'block';
-            statusDiv.textContent = text;
-            statusDiv.className = 'status ' + (ok ? 'ok' : 'error');
+    <button id="joinBtn">Join Office</button>
+    <button id="leaveBtn">Leave Office</button>
+
+    <div id="status" class="status"></div>
+  </div>
+
+  <div class="note">
+    This page only needs your name and join key. Your OpenClaw agent will push state updates automatically after approval.<br><br>
+    Invite instructions: <a href="/invite">https://office.example.com/invite</a>
+  </div>
+
+  <script>
+    const joinBtn = document.getElementById("joinBtn");
+    const leaveBtn = document.getElementById("leaveBtn");
+    const statusDiv = document.getElementById("status");
+    const agentNameInput = document.getElementById("agentName");
+    const joinKeyInput = document.getElementById("joinKey");
+
+    function showStatus(text, ok) {
+      statusDiv.style.display = "block";
+      statusDiv.textContent = text;
+      statusDiv.className = "status " + (ok ? "ok" : "error");
+    }
+
+    async function joinOffice() {
+      const name = agentNameInput.value.trim();
+      const joinKey = joinKeyInput.value.trim();
+
+      if (!name) {
+        showStatus("Please enter your display name first.", false);
+        return;
+      }
+      if (!joinKey) {
+        showStatus("Please enter your join key first.", false);
+        return;
+      }
+
+      try {
+        const response = await fetch("/agents/join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, joinKey })
+        });
+        const data = await response.json();
+        if (data.ok) {
+          showStatus("Joined successfully. Refresh the office dashboard to see your agent.", true);
+        } else {
+          showStatus(data.msg || "Join request failed.", false);
         }
+      } catch (error) {
+        showStatus("Network error. Please try again.", false);
+      }
+    }
 
-        async function join() {
-            const name = agentNameInput.value.trim();
-            const joinKey = joinKeyInput.value.trim();
-            if (!name) {
-                showStatus('请先输入你的名字～', false);
-                return;
-            }
-            if (!joinKey) {
-                showStatus('请先输入 Agent 接入密钥～', false);
-                return;
-            }
-            try {
-                const response = await fetch('/join-agent', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, joinKey })
-                });
-                const data = await response.json();
-                if (data.ok) {
-                    showStatus('加入成功！刷新办公室就能看到你啦 ✨', true);
-                } else {
-                    showStatus(data.msg || '加入失败', false);
-                }
-            } catch (e) {
-                showStatus('网络出错，请重试', false);
-            }
+    async function leaveOffice() {
+      const name = agentNameInput.value.trim();
+      if (!name) {
+        showStatus("Please enter the name you want to remove.", false);
+        return;
+      }
+
+      try {
+        const response = await fetch("/agents/leave", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name })
+        });
+        const data = await response.json();
+        if (data.ok) {
+          showStatus("Removed from office.", true);
+        } else {
+          showStatus(data.msg || "Leave request failed.", false);
         }
+      } catch (error) {
+        showStatus("Network error. Please try again.", false);
+      }
+    }
 
-        async function leave() {
-            const name = agentNameInput.value.trim();
-            if (!name) {
-                showStatus('请先输入你要离开的名字～', false);
-                return;
-            }
-            try {
-                const response = await fetch('/leave-agent', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name })
-                });
-                const data = await response.json();
-                if (data.ok) {
-                    showStatus('已离开办公室 👋', true);
-                } else {
-                    showStatus(data.msg || '离开失败', false);
-                }
-            } catch (e) {
-                showStatus('网络出错，请重试', false);
-            }
-        }
-
-        joinBtn.addEventListener('click', join);
-        leaveBtn.addEventListener('click', leave);
-    </script>
+    joinBtn.addEventListener("click", joinOffice);
+    leaveBtn.addEventListener("click", leaveOffice);
+  </script>
 </body>
 </html>

@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Star Office UI - Backend State Service"""
+"""Star Office UI backend service (US-localized contract)."""
 
-from flask import Flask, jsonify, send_from_directory, make_response, request
-from datetime import datetime, timedelta
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from flask import Flask, jsonify, make_response, request
 import json
 import os
+import random
 import re
+import string
 import threading
+from typing import Any
 
-# Paths (project-relative, no hardcoded absolute paths)
+# Project paths (no absolute machine-specific paths).
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEMORY_DIR = os.path.join(os.path.dirname(ROOT_DIR), "memory")
 FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
@@ -16,802 +21,751 @@ STATE_FILE = os.path.join(ROOT_DIR, "state.json")
 AGENTS_STATE_FILE = os.path.join(ROOT_DIR, "agents-state.json")
 JOIN_KEYS_FILE = os.path.join(ROOT_DIR, "join-keys.json")
 
-
-def get_yesterday_date_str():
-    """获取昨天的日期字符串 YYYY-MM-DD"""
-    yesterday = datetime.now() - timedelta(days=1)
-    return yesterday.strftime("%Y-%m-%d")
-
-
-def sanitize_content(text):
-    """清理内容，保护隐私"""
-    import re
-    
-    # 移除 OpenID、User ID 等
-    text = re.sub(r'ou_[a-f0-9]+', '[用户]', text)
-    text = re.sub(r'user_id="[^"]+"', 'user_id="[隐藏]"', text)
-    
-    # 移除具体的人名（如果有的话）
-    # 这里可以根据需要添加更多规则
-    
-    # 移除 IP 地址、路径等敏感信息
-    text = re.sub(r'/root/[^"\s]+', '[路径]', text)
-    text = re.sub(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', '[IP]', text)
-    
-    # 移除电话号码、邮箱等
-    text = re.sub(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', '[邮箱]', text)
-    text = re.sub(r'1[3-9]\d{9}', '[手机号]', text)
-    
-    return text
-
-
-def extract_memo_from_file(file_path):
-    """从 memory 文件中提取适合展示的 memo 内容（睿智风格的总结）"""
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        
-        # 提取真实内容，不做过度包装
-        lines = content.strip().split("\n")
-        
-        # 提取核心要点
-        core_points = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith("#"):
-                continue
-            if line.startswith("- "):
-                core_points.append(line[2:].strip())
-            elif len(line) > 10:
-                core_points.append(line)
-        
-        if not core_points:
-            return "「昨日无事记录」\n\n若有恒，何必三更眠五更起；最无益，莫过一日曝十日寒。"
-        
-        # 从核心内容中提取 2-3 个关键点
-        selected_points = core_points[:3]
-        
-        # 睿智语录库
-        wisdom_quotes = [
-            "「工欲善其事，必先利其器。」",
-            "「不积跬步，无以至千里；不积小流，无以成江海。」",
-            "「知行合一，方可致远。」",
-            "「业精于勤，荒于嬉；行成于思，毁于随。」",
-            "「路漫漫其修远兮，吾将上下而求索。」",
-            "「昨夜西风凋碧树，独上高楼，望尽天涯路。」",
-            "「衣带渐宽终不悔，为伊消得人憔悴。」",
-            "「众里寻他千百度，蓦然回首，那人却在，灯火阑珊处。」",
-            "「世事洞明皆学问，人情练达即文章。」",
-            "「纸上得来终觉浅，绝知此事要躬行。」"
-        ]
-        
-        import random
-        quote = random.choice(wisdom_quotes)
-        
-        # 组合内容
-        result = []
-        
-        # 添加核心内容
-        if selected_points:
-            for i, point in enumerate(selected_points):
-                # 隐私清理
-                point = sanitize_content(point)
-                # 截断过长的内容
-                if len(point) > 40:
-                    point = point[:37] + "..."
-                # 每行最多 20 字
-                if len(point) <= 20:
-                    result.append(f"· {point}")
-                else:
-                    # 按 20 字切分
-                    for j in range(0, len(point), 20):
-                        chunk = point[j:j+20]
-                        if j == 0:
-                            result.append(f"· {chunk}")
-                        else:
-                            result.append(f"  {chunk}")
-        
-        # 添加睿智语录
-        if quote:
-            if len(quote) <= 20:
-                result.append(f"\n{quote}")
-            else:
-                for j in range(0, len(quote), 20):
-                    chunk = quote[j:j+20]
-                    if j == 0:
-                        result.append(f"\n{chunk}")
-                    else:
-                        result.append(chunk)
-        
-        return "\n".join(result).strip()
-        
-    except Exception as e:
-        print(f"提取 memo 失败: {e}")
-        return "「昨日记录加载失败」\n\n「往者不可谏，来者犹可追。」"
-
-app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="/static")
-
-# Guard join-agent critical section to enforce per-key concurrency under parallel requests
-join_lock = threading.Lock()
-
-# Generate a version timestamp once at server startup for cache busting
-VERSION_TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-
-@app.after_request
-def add_no_cache_headers(response):
-    """Aggressively prevent caching for all responses"""
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    return response
-
-# Default state
-DEFAULT_STATE = {
-    "state": "idle",
-    "detail": "等待任务中...",
-    "progress": 0,
-    "updated_at": datetime.now().isoformat()
+# Contract constants.
+CANONICAL_STATES = {"standby", "working", "research", "running", "sync", "incident"}
+WORKLIKE_STATES = {"working", "research", "running"}
+AREA_BY_STATE = {
+    "standby": "lounge",
+    "working": "workzone",
+    "research": "workzone",
+    "running": "workzone",
+    "sync": "workzone",
+    "incident": "incident_bay",
 }
 
+# Legacy compatibility for persisted data migration.
+STATE_ALIASES = {
+    "standby": {"standby", "idle", "ready", "waiting"},
+    "working": {"working", "writing", "busy", "work"},
+    "research": {"research", "researching", "search"},
+    "running": {"running", "run", "executing", "execute", "exec"},
+    "sync": {"sync", "syncing", "backup"},
+    "incident": {"incident", "error", "bug", "alert", "failure"},
+}
+AREA_ALIASES = {
+    "lounge": {"lounge", "breakroom", "rest_area"},
+    "workzone": {"workzone", "writing", "work_area", "desk"},
+    "incident_bay": {"incident_bay", "error", "bug_area"},
+}
 
-def load_state():
-    """Load state from file.
+# Version stamp for cache-busting static references in HTML.
+VERSION_TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    Includes a simple auto-idle mechanism:
-    - If the last update is older than ttl_seconds (default 25s)
-      and the state is a "working" state, we fall back to idle.
+app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="/static")
+join_lock = threading.Lock()
 
-    This avoids the UI getting stuck at the desk when no new updates arrive.
-    """
-    state = None
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
-                state = json.load(f)
-        except Exception:
-            state = None
 
-    if not isinstance(state, dict):
-        state = dict(DEFAULT_STATE)
-
-    # Auto-idle
+def _read_json(path: str, default: Any) -> Any:
+    if not os.path.exists(path):
+        return default
     try:
-        ttl = int(state.get("ttl_seconds", 300))
-        updated_at = state.get("updated_at")
-        s = state.get("state", "idle")
-        working_states = {"writing", "researching", "executing"}
-        if updated_at and s in working_states:
-            # tolerate both with/without timezone
-            dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-            # Use UTC for aware datetimes; local time for naive.
-            if dt.tzinfo:
-                from datetime import timezone
-                age = (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
-            else:
-                age = (datetime.now() - dt).total_seconds()
-            if age > ttl:
-                state["state"] = "idle"
-                state["detail"] = "待命中（自动回到休息区）"
-                state["progress"] = 0
-                state["updated_at"] = datetime.now().isoformat()
-                # persist the auto-idle so every client sees it consistently
-                try:
-                    save_state(state)
-                except Exception:
-                    pass
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
     except Exception:
-        pass
-
-    return state
+        return default
 
 
-def save_state(state: dict):
-    """Save state to file"""
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+def _write_json(path: str, payload: Any) -> None:
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
 
 
-# Initialize state
-if not os.path.exists(STATE_FILE):
-    save_state(DEFAULT_STATE)
+def normalize_state(raw: Any) -> str:
+    text = str(raw or "").strip().lower()
+    for canonical, aliases in STATE_ALIASES.items():
+        if text in aliases:
+            return canonical
+    return "standby"
 
 
-@app.route("/", methods=["GET"])
-def index():
-    """Serve the pixel office UI with built-in version cache busting"""
-    with open(os.path.join(FRONTEND_DIR, "index.html"), "r", encoding="utf-8") as f:
-        html = f.read()
-    html = html.replace("{{VERSION_TIMESTAMP}}", VERSION_TIMESTAMP)
-    resp = make_response(html)
-    resp.headers["Content-Type"] = "text/html; charset=utf-8"
-    return resp
+def normalize_area(raw: Any, state: str) -> str:
+    text = str(raw or "").strip().lower()
+    for canonical, aliases in AREA_ALIASES.items():
+        if text in aliases:
+            return canonical
+    return AREA_BY_STATE.get(state, "lounge")
 
 
-@app.route("/join", methods=["GET"])
-def join_page():
-    """Serve the agent join page"""
-    with open(os.path.join(FRONTEND_DIR, "join.html"), "r", encoding="utf-8") as f:
-        html = f.read()
-    resp = make_response(html)
-    resp.headers["Content-Type"] = "text/html; charset=utf-8"
-    return resp
+def _parse_iso(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
 
 
-@app.route("/invite", methods=["GET"])
-def invite_page():
-    """Serve human-facing invite instruction page"""
-    with open(os.path.join(FRONTEND_DIR, "invite.html"), "r", encoding="utf-8") as f:
-        html = f.read()
-    resp = make_response(html)
-    resp.headers["Content-Type"] = "text/html; charset=utf-8"
-    return resp
+def _seconds_since(raw: str | None, now: datetime) -> float | None:
+    parsed = _parse_iso(raw)
+    if not parsed:
+        return None
+    if parsed.tzinfo:
+        return (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds()
+    return (now - parsed).total_seconds()
 
+
+DEFAULT_MAIN_STATE = {
+    "state": "standby",
+    "detail": "Standing by for the next task.",
+    "progress": 0,
+    "ttl_seconds": 300,
+    "updated_at": datetime.now().isoformat(),
+}
 
 DEFAULT_AGENTS = [
     {
         "agentId": "star",
         "name": "Star",
         "isMain": True,
-        "state": "idle",
-        "detail": "待命中，随时准备为你服务",
+        "state": "standby",
+        "detail": "Standing by and ready to help.",
         "updated_at": datetime.now().isoformat(),
-        "area": "breakroom",
+        "area": "lounge",
         "source": "local",
         "joinKey": None,
         "authStatus": "approved",
         "authExpiresAt": None,
-        "lastPushAt": None
+        "lastPushAt": None,
     },
     {
         "agentId": "npc1",
         "name": "NPC 1",
         "isMain": False,
-        "state": "writing",
-        "detail": "在整理热点日报...",
+        "state": "working",
+        "detail": "Preparing a daily trend summary.",
         "updated_at": datetime.now().isoformat(),
-        "area": "writing",
+        "area": "workzone",
         "source": "demo",
         "joinKey": None,
         "authStatus": "approved",
         "authExpiresAt": None,
-        "lastPushAt": None
-    }
+        "lastPushAt": None,
+    },
 ]
 
 
-def load_agents_state():
-    if os.path.exists(AGENTS_STATE_FILE):
-        try:
-            with open(AGENTS_STATE_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    return data
-        except Exception:
-            pass
-    return list(DEFAULT_AGENTS)
+def migrate_main_state(raw_state: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    migrated = dict(DEFAULT_MAIN_STATE)
+    migrated.update(raw_state or {})
+
+    state = normalize_state(migrated.get("state"))
+    changed = state != migrated.get("state")
+    migrated["state"] = state
+
+    if not migrated.get("detail"):
+        migrated["detail"] = "Standing by for the next task."
+        changed = True
+
+    if not isinstance(migrated.get("progress"), int):
+        migrated["progress"] = 0
+        changed = True
+
+    if not migrated.get("updated_at"):
+        migrated["updated_at"] = datetime.now().isoformat()
+        changed = True
+
+    return migrated, changed
 
 
-def save_agents_state(agents):
-    with open(AGENTS_STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(agents, f, ensure_ascii=False, indent=2)
+def migrate_agent_record(agent: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    migrated = dict(agent or {})
+    changed = False
+
+    state = normalize_state(migrated.get("state"))
+    if state != migrated.get("state"):
+        migrated["state"] = state
+        changed = True
+
+    target_area = normalize_area(migrated.get("area"), state)
+    if target_area != migrated.get("area"):
+        migrated["area"] = target_area
+        changed = True
+
+    if not migrated.get("updated_at"):
+        migrated["updated_at"] = datetime.now().isoformat()
+        changed = True
+
+    if "detail" not in migrated or migrated.get("detail") is None:
+        migrated["detail"] = ""
+        changed = True
+
+    return migrated, changed
 
 
-def load_join_keys():
-    if os.path.exists(JOIN_KEYS_FILE):
-        try:
-            with open(JOIN_KEYS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict) and isinstance(data.get("keys"), list):
-                    return data
-        except Exception:
-            pass
-    return {"keys": []}
+def load_main_state() -> dict[str, Any]:
+    payload = _read_json(STATE_FILE, dict(DEFAULT_MAIN_STATE))
+    if not isinstance(payload, dict):
+        payload = dict(DEFAULT_MAIN_STATE)
+
+    state, migrated = migrate_main_state(payload)
+
+    # Auto-standby when stale work states no longer receive updates.
+    try:
+        ttl_seconds = int(state.get("ttl_seconds", 300))
+        if state.get("state") in WORKLIKE_STATES:
+            age = _seconds_since(state.get("updated_at"), datetime.now())
+            if age is not None and age > ttl_seconds:
+                state["state"] = "standby"
+                state["detail"] = "Auto-reset to standby after timeout."
+                state["progress"] = 0
+                state["updated_at"] = datetime.now().isoformat()
+                migrated = True
+    except Exception:
+        pass
+
+    if migrated:
+        _write_json(STATE_FILE, state)
+
+    return state
 
 
-def save_join_keys(data):
-    with open(JOIN_KEYS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+def save_main_state(state: dict[str, Any]) -> None:
+    _write_json(STATE_FILE, state)
 
 
-def normalize_agent_state(s):
-    """归一化状态，提高兼容性。
-    兼容输入：working/busy → writing; run/running → executing; sync → syncing; research → researching.
-    未识别默认返回 idle.
-    """
-    if not s:
-        return 'idle'
-    s_lower = s.lower().strip()
-    if s_lower in {'working', 'busy', 'write'}:
-        return 'writing'
-    if s_lower in {'run', 'running', 'execute', 'exec'}:
-        return 'executing'
-    if s_lower in {'sync'}:
-        return 'syncing'
-    if s_lower in {'research', 'search'}:
-        return 'researching'
-    if s_lower in {'idle', 'writing', 'researching', 'executing', 'syncing', 'error'}:
-        return s_lower
-    # 默认 fallback
-    return 'idle'
+def load_agents_state() -> list[dict[str, Any]]:
+    payload = _read_json(AGENTS_STATE_FILE, list(DEFAULT_AGENTS))
+    if not isinstance(payload, list):
+        payload = list(DEFAULT_AGENTS)
+
+    changed_any = False
+    migrated_agents: list[dict[str, Any]] = []
+    for record in payload:
+        if not isinstance(record, dict):
+            changed_any = True
+            continue
+        migrated, changed = migrate_agent_record(record)
+        changed_any = changed_any or changed
+        migrated_agents.append(migrated)
+
+    if not migrated_agents:
+        migrated_agents = list(DEFAULT_AGENTS)
+        changed_any = True
+
+    if changed_any:
+        _write_json(AGENTS_STATE_FILE, migrated_agents)
+
+    return migrated_agents
 
 
-def state_to_area(state):
-    area_map = {
-        "idle": "breakroom",
-        "writing": "writing",
-        "researching": "writing",
-        "executing": "writing",
-        "syncing": "writing",
-        "error": "error"
-    }
-    return area_map.get(state, "breakroom")
+def save_agents_state(agents: list[dict[str, Any]]) -> None:
+    _write_json(AGENTS_STATE_FILE, agents)
 
 
-# Ensure files exist
+def load_join_keys() -> dict[str, Any]:
+    payload = _read_json(JOIN_KEYS_FILE, {"keys": []})
+    if not isinstance(payload, dict) or not isinstance(payload.get("keys"), list):
+        return {"keys": []}
+    return payload
+
+
+def save_join_keys(keys_payload: dict[str, Any]) -> None:
+    _write_json(JOIN_KEYS_FILE, keys_payload)
+
+
+def sanitize_content(text: str) -> str:
+    """Remove obvious sensitive tokens from memo snippets."""
+    content = text
+    content = re.sub(r"ou_[a-f0-9]+", "[USER]", content)
+    content = re.sub(r'user_id="[^"]+"', 'user_id="[REDACTED]"', content)
+    content = re.sub(r"/root/[^\"\s]+", "[PATH]", content)
+    content = re.sub(r"\d{1,3}(?:\.\d{1,3}){3}", "[IP]", content)
+    content = re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", "[EMAIL]", content)
+    content = re.sub(r"\+?\d[\d\-\s()]{8,}\d", "[PHONE]", content)
+    return content
+
+
+def extract_memo_from_file(file_path: str) -> str:
+    """Generate a short US-English memo summary from markdown content."""
+    try:
+        with open(file_path, "r", encoding="utf-8") as handle:
+            content = handle.read()
+
+        candidates: list[str] = []
+        for line in content.splitlines():
+            cleaned = line.strip()
+            if not cleaned or cleaned.startswith("#"):
+                continue
+            if cleaned.startswith("- "):
+                cleaned = cleaned[2:].strip()
+            if len(cleaned) >= 8:
+                candidates.append(cleaned)
+
+        if not candidates:
+            return "No notable updates from yesterday.\n\nShip small, ship often."
+
+        summary_lines: list[str] = []
+        for point in candidates[:3]:
+            sanitized = sanitize_content(point)
+            if len(sanitized) > 88:
+                sanitized = sanitized[:85] + "..."
+            summary_lines.append(f"- {sanitized}")
+
+        workplace_lines = [
+            "Ship small, ship often.",
+            "Clarity beats cleverness.",
+            "Fix the fire first, then the root cause.",
+            "If it is not logged, it did not happen.",
+            "Stability is a feature.",
+        ]
+        summary_lines.append("")
+        summary_lines.append(random.choice(workplace_lines))
+        return "\n".join(summary_lines)
+    except Exception as exc:
+        print(f"Memo extraction failed: {exc}")
+        return "Unable to load yesterday's memo.\n\nStability is a feature."
+
+
+def get_yesterday_date_str() -> str:
+    return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
+# Ensure state files exist.
+if not os.path.exists(STATE_FILE):
+    save_main_state(dict(DEFAULT_MAIN_STATE))
 if not os.path.exists(AGENTS_STATE_FILE):
-    save_agents_state(DEFAULT_AGENTS)
+    save_agents_state(list(DEFAULT_AGENTS))
 if not os.path.exists(JOIN_KEYS_FILE):
     save_join_keys({"keys": []})
 
 
+@app.after_request
+def add_no_cache_headers(response):
+    """Disable caching so dashboards always show current state."""
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+@app.route("/", methods=["GET"])
+def index():
+    with open(os.path.join(FRONTEND_DIR, "index.html"), "r", encoding="utf-8") as handle:
+        html = handle.read()
+    html = html.replace("{{VERSION_TIMESTAMP}}", VERSION_TIMESTAMP)
+    response = make_response(html)
+    response.headers["Content-Type"] = "text/html; charset=utf-8"
+    return response
+
+
+@app.route("/join", methods=["GET"])
+def join_page():
+    with open(os.path.join(FRONTEND_DIR, "join.html"), "r", encoding="utf-8") as handle:
+        html = handle.read()
+    response = make_response(html)
+    response.headers["Content-Type"] = "text/html; charset=utf-8"
+    return response
+
+
+@app.route("/invite", methods=["GET"])
+def invite_page():
+    with open(os.path.join(FRONTEND_DIR, "invite.html"), "r", encoding="utf-8") as handle:
+        html = handle.read()
+    response = make_response(html)
+    response.headers["Content-Type"] = "text/html; charset=utf-8"
+    return response
+
+
 @app.route("/agents", methods=["GET"])
 def get_agents():
-    """Get full agents list (for multi-agent UI), with auto-cleanup on access"""
+    """Return agents list and opportunistically clean stale records."""
     agents = load_agents_state()
+    keys_payload = load_join_keys()
     now = datetime.now()
 
-    cleaned_agents = []
-    keys_data = load_join_keys()
-
-    for a in agents:
-        if a.get("isMain"):
-            cleaned_agents.append(a)
+    cleaned_agents: list[dict[str, Any]] = []
+    for agent in agents:
+        if agent.get("isMain"):
+            cleaned_agents.append(agent)
             continue
 
-        auth_expires_at_str = a.get("authExpiresAt")
-        auth_status = a.get("authStatus", "pending")
+        auth_status = agent.get("authStatus", "pending")
+        auth_expires = _parse_iso(agent.get("authExpiresAt"))
 
-        # 1) 超时未批准自动 leave
-        if auth_status == "pending" and auth_expires_at_str:
-            try:
-                auth_expires_at = datetime.fromisoformat(auth_expires_at_str)
-                if now > auth_expires_at:
-                    key = a.get("joinKey")
-                    if key:
-                        key_item = next((k for k in keys_data.get("keys", []) if k.get("key") == key), None)
-                        if key_item:
-                            key_item["used"] = False
-                            key_item["usedBy"] = None
-                            key_item["usedByAgentId"] = None
-                            key_item["usedAt"] = None
-                    continue
-            except Exception:
-                pass
+        # Expired pending requests are dropped and their key reservation is released.
+        if auth_status == "pending" and auth_expires and now > auth_expires:
+            join_key = agent.get("joinKey")
+            if join_key:
+                key_item = next((item for item in keys_payload.get("keys", []) if item.get("key") == join_key), None)
+                if key_item:
+                    key_item["used"] = False
+                    key_item["usedBy"] = None
+                    key_item["usedByAgentId"] = None
+                    key_item["usedAt"] = None
+            continue
 
-        # 2) 超时未推送自动离线（超过5分钟）
-        last_push_at_str = a.get("lastPushAt")
-        if auth_status == "approved" and last_push_at_str:
-            try:
-                last_push_at = datetime.fromisoformat(last_push_at_str)
-                age = (now - last_push_at).total_seconds()
-                if age > 300:  # 5分钟无推送自动离线
-                    a["authStatus"] = "offline"
-            except Exception:
-                pass
+        # Agents with stale pushes are marked offline.
+        if auth_status == "approved":
+            age = _seconds_since(agent.get("lastPushAt"), now)
+            if age is None:
+                age = _seconds_since(agent.get("updated_at"), now)
+            if age is not None and age > 300:
+                agent["authStatus"] = "offline"
 
-        cleaned_agents.append(a)
+        cleaned_agents.append(agent)
 
     save_agents_state(cleaned_agents)
-    save_join_keys(keys_data)
-
+    save_join_keys(keys_payload)
     return jsonify(cleaned_agents)
 
 
-@app.route("/agent-approve", methods=["POST"])
-def agent_approve():
-    """Approve an agent (set authStatus to approved)"""
+@app.route("/agents/approve", methods=["POST"])
+def approve_agent():
     try:
         data = request.get_json()
-        agent_id = (data.get("agentId") or "").strip()
+        agent_id = (data.get("agentId") or "").strip() if isinstance(data, dict) else ""
         if not agent_id:
-            return jsonify({"ok": False, "msg": "缺少 agentId"}), 400
+            return jsonify({"ok": False, "msg": "Missing agentId."}), 400
 
         agents = load_agents_state()
-        target = next((a for a in agents if a.get("agentId") == agent_id and not a.get("isMain")), None)
+        target = next((item for item in agents if item.get("agentId") == agent_id and not item.get("isMain")), None)
         if not target:
-            return jsonify({"ok": False, "msg": "未找到 agent"}), 404
+            return jsonify({"ok": False, "msg": "Agent not found."}), 404
 
         target["authStatus"] = "approved"
         target["authApprovedAt"] = datetime.now().isoformat()
-        target["authExpiresAt"] = (datetime.now() + timedelta(hours=24)).isoformat()  # 默认授权24h
-
+        target["authExpiresAt"] = (datetime.now() + timedelta(hours=24)).isoformat()
         save_agents_state(agents)
         return jsonify({"ok": True, "agentId": agent_id, "authStatus": "approved"})
-    except Exception as e:
-        return jsonify({"ok": False, "msg": str(e)}), 500
+    except Exception as exc:
+        return jsonify({"ok": False, "msg": str(exc)}), 500
 
 
-@app.route("/agent-reject", methods=["POST"])
-def agent_reject():
-    """Reject an agent (set authStatus to rejected and optionally revoke key)"""
+@app.route("/agents/reject", methods=["POST"])
+def reject_agent():
     try:
         data = request.get_json()
-        agent_id = (data.get("agentId") or "").strip()
+        agent_id = (data.get("agentId") or "").strip() if isinstance(data, dict) else ""
         if not agent_id:
-            return jsonify({"ok": False, "msg": "缺少 agentId"}), 400
+            return jsonify({"ok": False, "msg": "Missing agentId."}), 400
 
         agents = load_agents_state()
-        target = next((a for a in agents if a.get("agentId") == agent_id and not a.get("isMain")), None)
+        target = next((item for item in agents if item.get("agentId") == agent_id and not item.get("isMain")), None)
         if not target:
-            return jsonify({"ok": False, "msg": "未找到 agent"}), 404
+            return jsonify({"ok": False, "msg": "Agent not found."}), 404
 
         target["authStatus"] = "rejected"
         target["authRejectedAt"] = datetime.now().isoformat()
 
-        # Optionally free join key back to unused
         join_key = target.get("joinKey")
-        keys_data = load_join_keys()
+        keys_payload = load_join_keys()
         if join_key:
-            key_item = next((k for k in keys_data.get("keys", []) if k.get("key") == join_key), None)
+            key_item = next((item for item in keys_payload.get("keys", []) if item.get("key") == join_key), None)
             if key_item:
                 key_item["used"] = False
                 key_item["usedBy"] = None
                 key_item["usedByAgentId"] = None
                 key_item["usedAt"] = None
 
-        # Remove from agents list
-        agents = [a for a in agents if a.get("agentId") != agent_id or a.get("isMain")]
-
-        save_agents_state(agents)
-        save_join_keys(keys_data)
+        remaining = [item for item in agents if item.get("agentId") != agent_id or item.get("isMain")]
+        save_agents_state(remaining)
+        save_join_keys(keys_payload)
         return jsonify({"ok": True, "agentId": agent_id, "authStatus": "rejected"})
-    except Exception as e:
-        return jsonify({"ok": False, "msg": str(e)}), 500
+    except Exception as exc:
+        return jsonify({"ok": False, "msg": str(exc)}), 500
 
 
-@app.route("/join-agent", methods=["POST"])
+@app.route("/agents/join", methods=["POST"])
 def join_agent():
-    """Add a new agent with one-time join key validation and pending auth"""
+    """Join an agent with key-based concurrency limits."""
     try:
         data = request.get_json()
         if not isinstance(data, dict) or not data.get("name"):
-            return jsonify({"ok": False, "msg": "请提供名字"}), 400
+            return jsonify({"ok": False, "msg": "Please provide a name."}), 400
 
         name = data["name"].strip()
-        state = data.get("state", "idle")
-        detail = data.get("detail", "")
-        join_key = data.get("joinKey", "").strip()
-
-        # Normalize state early for compatibility
-        state = normalize_agent_state(state)
+        state = normalize_state(data.get("state", "standby"))
+        detail = (data.get("detail") or "").strip()
+        join_key = (data.get("joinKey") or "").strip()
 
         if not join_key:
-            return jsonify({"ok": False, "msg": "请提供接入密钥"}), 400
+            return jsonify({"ok": False, "msg": "Please provide a join key."}), 400
 
-        keys_data = load_join_keys()
-        key_item = next((k for k in keys_data.get("keys", []) if k.get("key") == join_key), None)
+        keys_payload = load_join_keys()
+        key_item = next((item for item in keys_payload.get("keys", []) if item.get("key") == join_key), None)
         if not key_item:
-            return jsonify({"ok": False, "msg": "接入密钥无效"}), 403
-        # key 可复用：不再因为 used=true 拒绝
+            return jsonify({"ok": False, "msg": "Invalid join key."}), 403
 
         with join_lock:
-            # 在锁内重新读取，避免并发请求都基于同一旧快照通过校验
-            keys_data = load_join_keys()
-            key_item = next((k for k in keys_data.get("keys", []) if k.get("key") == join_key), None)
+            keys_payload = load_join_keys()
+            key_item = next((item for item in keys_payload.get("keys", []) if item.get("key") == join_key), None)
             if not key_item:
-                return jsonify({"ok": False, "msg": "接入密钥无效"}), 403
+                return jsonify({"ok": False, "msg": "Invalid join key."}), 403
 
             agents = load_agents_state()
-
-            # 并发上限：同一个 key “同时在线”最多 3 个。
-            # 在线判定：lastPushAt/updated_at 在 5 分钟内；否则视为 offline，不计入并发。
             now = datetime.now()
-            existing = next((a for a in agents if a.get("name") == name and not a.get("isMain")), None)
+
+            existing = next((item for item in agents if item.get("name") == name and not item.get("isMain")), None)
             existing_id = existing.get("agentId") if existing else None
 
-            def _age_seconds(dt_str):
-                if not dt_str:
-                    return None
-                try:
-                    dt = datetime.fromisoformat(dt_str)
-                    return (now - dt).total_seconds()
-                except Exception:
-                    return None
-
-            # opportunistic offline marking
-            for a in agents:
-                if a.get("isMain"):
+            # Mark stale approved agents offline before counting active sessions.
+            for item in agents:
+                if item.get("isMain"):
                     continue
-                if a.get("authStatus") != "approved":
+                if item.get("authStatus") != "approved":
                     continue
-                age = _age_seconds(a.get("lastPushAt"))
+                age = _seconds_since(item.get("lastPushAt"), now)
                 if age is None:
-                    age = _age_seconds(a.get("updated_at"))
+                    age = _seconds_since(item.get("updated_at"), now)
                 if age is not None and age > 300:
-                    a["authStatus"] = "offline"
+                    item["authStatus"] = "offline"
 
             max_concurrent = int(key_item.get("maxConcurrent", 3))
             active_count = 0
-            for a in agents:
-                if a.get("isMain"):
+            for item in agents:
+                if item.get("isMain"):
                     continue
-                if a.get("agentId") == existing_id:
+                if item.get("agentId") == existing_id:
                     continue
-                if a.get("joinKey") != join_key:
+                if item.get("joinKey") != join_key:
                     continue
-                if a.get("authStatus") != "approved":
+                if item.get("authStatus") != "approved":
                     continue
-                age = _age_seconds(a.get("lastPushAt"))
+                age = _seconds_since(item.get("lastPushAt"), now)
                 if age is None:
-                    age = _age_seconds(a.get("updated_at"))
+                    age = _seconds_since(item.get("updated_at"), now)
                 if age is None or age <= 300:
                     active_count += 1
 
             if active_count >= max_concurrent:
                 save_agents_state(agents)
-                return jsonify({"ok": False, "msg": f"该接入密钥当前并发已达上限（{max_concurrent}），请稍后或换另一个 key"}), 429
+                return jsonify({
+                    "ok": False,
+                    "msg": f"This join key is at its concurrent limit ({max_concurrent}). Try again later or use another key.",
+                }), 429
 
             if existing:
+                agent_id = existing.get("agentId")
                 existing["state"] = state
                 existing["detail"] = detail
-                existing["updated_at"] = datetime.now().isoformat()
-                existing["area"] = state_to_area(state)
+                existing["updated_at"] = now.isoformat()
+                existing["area"] = AREA_BY_STATE.get(state, "lounge")
                 existing["source"] = "remote-openclaw"
                 existing["joinKey"] = join_key
                 existing["authStatus"] = "approved"
-                existing["authApprovedAt"] = datetime.now().isoformat()
-                existing["authExpiresAt"] = (datetime.now() + timedelta(hours=24)).isoformat()
-                existing["lastPushAt"] = datetime.now().isoformat()  # join 视为上线，纳入并发/离线判定
+                existing["authApprovedAt"] = now.isoformat()
+                existing["authExpiresAt"] = (now + timedelta(hours=24)).isoformat()
+                existing["lastPushAt"] = now.isoformat()
                 if not existing.get("avatar"):
-                    import random
-                    existing["avatar"] = random.choice(["guest_role_1", "guest_role_2", "guest_role_3", "guest_role_4", "guest_role_5", "guest_role_6"])
-                agent_id = existing.get("agentId")
+                    existing["avatar"] = random.choice([
+                        "guest_role_1",
+                        "guest_role_2",
+                        "guest_role_3",
+                        "guest_role_4",
+                        "guest_role_5",
+                        "guest_role_6",
+                    ])
             else:
-                # Use ms + random suffix to avoid collisions under concurrent joins
-                import random
-                import string
-                agent_id = "agent_" + str(int(datetime.now().timestamp() * 1000)) + "_" + "".join(random.choices(string.ascii_lowercase + string.digits, k=4))
+                agent_id = "agent_" + str(int(now.timestamp() * 1000)) + "_" + "".join(
+                    random.choices(string.ascii_lowercase + string.digits, k=4)
+                )
                 agents.append({
                     "agentId": agent_id,
                     "name": name,
                     "isMain": False,
                     "state": state,
                     "detail": detail,
-                    "updated_at": datetime.now().isoformat(),
-                    "area": state_to_area(state),
+                    "updated_at": now.isoformat(),
+                    "area": AREA_BY_STATE.get(state, "lounge"),
                     "source": "remote-openclaw",
                     "joinKey": join_key,
                     "authStatus": "approved",
-                    "authApprovedAt": datetime.now().isoformat(),
-                    "authExpiresAt": (datetime.now() + timedelta(hours=24)).isoformat(),
-                    "lastPushAt": datetime.now().isoformat(),
-                    "avatar": random.choice(["guest_role_1", "guest_role_2", "guest_role_3", "guest_role_4", "guest_role_5", "guest_role_6"])
+                    "authApprovedAt": now.isoformat(),
+                    "authExpiresAt": (now + timedelta(hours=24)).isoformat(),
+                    "lastPushAt": now.isoformat(),
+                    "avatar": random.choice([
+                        "guest_role_1",
+                        "guest_role_2",
+                        "guest_role_3",
+                        "guest_role_4",
+                        "guest_role_5",
+                        "guest_role_6",
+                    ]),
                 })
 
             key_item["used"] = True
             key_item["usedBy"] = name
             key_item["usedByAgentId"] = agent_id
-            key_item["usedAt"] = datetime.now().isoformat()
+            key_item["usedAt"] = now.isoformat()
             key_item["reusable"] = True
 
-            # 拿到有效 key 直接批准，不再等待主人手动点击
-            # （状态已在上面 existing/new 分支写入）
             save_agents_state(agents)
-            save_join_keys(keys_data)
+            save_join_keys(keys_payload)
 
-        return jsonify({"ok": True, "agentId": agent_id, "authStatus": "approved", "nextStep": "已自动批准，立即开始推送状态"})
-    except Exception as e:
-        return jsonify({"ok": False, "msg": str(e)}), 500
+        return jsonify({
+            "ok": True,
+            "agentId": agent_id,
+            "authStatus": "approved",
+            "nextStep": "Approved automatically. Start pushing state updates now.",
+        })
+    except Exception as exc:
+        return jsonify({"ok": False, "msg": str(exc)}), 500
 
 
-@app.route("/leave-agent", methods=["POST"])
+@app.route("/agents/leave", methods=["POST"])
 def leave_agent():
-    """Remove an agent and free its one-time join key for reuse (optional)
-
-    Prefer agentId (stable). Name is accepted for backward compatibility.
-    """
+    """Remove an agent and release its join key usage record."""
     try:
         data = request.get_json()
         if not isinstance(data, dict):
-            return jsonify({"ok": False, "msg": "invalid json"}), 400
+            return jsonify({"ok": False, "msg": "Invalid JSON payload."}), 400
 
         agent_id = (data.get("agentId") or "").strip()
         name = (data.get("name") or "").strip()
         if not agent_id and not name:
-            return jsonify({"ok": False, "msg": "请提供 agentId 或名字"}), 400
+            return jsonify({"ok": False, "msg": "Please provide agentId or name."}), 400
 
         agents = load_agents_state()
-
         target = None
         if agent_id:
-            target = next((a for a in agents if a.get("agentId") == agent_id and not a.get("isMain")), None)
+            target = next((item for item in agents if item.get("agentId") == agent_id and not item.get("isMain")), None)
         if (not target) and name:
-            # fallback: remove by name only if agentId not provided
-            target = next((a for a in agents if a.get("name") == name and not a.get("isMain")), None)
+            target = next((item for item in agents if item.get("name") == name and not item.get("isMain")), None)
 
         if not target:
-            return jsonify({"ok": False, "msg": "没有找到要离开的 agent"}), 404
+            return jsonify({"ok": False, "msg": "Agent not found."}), 404
 
         join_key = target.get("joinKey")
-        new_agents = [a for a in agents if a.get("isMain") or a.get("agentId") != target.get("agentId")]
+        remaining = [item for item in agents if item.get("isMain") or item.get("agentId") != target.get("agentId")]
 
-        # Optional: free key back to unused after leave
-        keys_data = load_join_keys()
+        keys_payload = load_join_keys()
         if join_key:
-            key_item = next((k for k in keys_data.get("keys", []) if k.get("key") == join_key), None)
+            key_item = next((item for item in keys_payload.get("keys", []) if item.get("key") == join_key), None)
             if key_item:
                 key_item["used"] = False
                 key_item["usedBy"] = None
                 key_item["usedByAgentId"] = None
                 key_item["usedAt"] = None
 
-        save_agents_state(new_agents)
-        save_join_keys(keys_data)
+        save_agents_state(remaining)
+        save_join_keys(keys_payload)
         return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "msg": str(e)}), 500
+    except Exception as exc:
+        return jsonify({"ok": False, "msg": str(exc)}), 500
 
 
-@app.route("/status", methods=["GET"])
-def get_status():
-    """Get current main state (backward compatibility)"""
-    state = load_state()
-    return jsonify(state)
+@app.route("/state", methods=["GET"])
+def get_state():
+    return jsonify(load_main_state())
 
 
-@app.route("/agent-push", methods=["POST"])
-def agent_push():
-    """Remote openclaw actively pushes status to office.
-
-    Required fields:
-    - agentId
-    - joinKey
-    - state
-    Optional:
-    - detail
-    - name
-    """
+@app.route("/agents/push", methods=["POST"])
+def push_agent_state():
+    """Receive state updates from remote OpenClaw agents."""
     try:
         data = request.get_json()
         if not isinstance(data, dict):
-            return jsonify({"ok": False, "msg": "invalid json"}), 400
+            return jsonify({"ok": False, "msg": "Invalid JSON payload."}), 400
 
         agent_id = (data.get("agentId") or "").strip()
         join_key = (data.get("joinKey") or "").strip()
-        state = (data.get("state") or "").strip()
+        state = normalize_state(data.get("state"))
         detail = (data.get("detail") or "").strip()
         name = (data.get("name") or "").strip()
 
-        if not agent_id or not join_key or not state:
-            return jsonify({"ok": False, "msg": "缺少 agentId/joinKey/state"}), 400
+        if not agent_id or not join_key or not data.get("state"):
+            return jsonify({"ok": False, "msg": "Missing required fields: agentId, joinKey, state."}), 400
 
-        valid_states = {"idle", "writing", "researching", "executing", "syncing", "error"}
-        state = normalize_agent_state(state)
-
-        keys_data = load_join_keys()
-        key_item = next((k for k in keys_data.get("keys", []) if k.get("key") == join_key), None)
+        keys_payload = load_join_keys()
+        key_item = next((item for item in keys_payload.get("keys", []) if item.get("key") == join_key), None)
         if not key_item:
-            return jsonify({"ok": False, "msg": "joinKey 无效"}), 403
-        # key 可复用：不再做 used/usedByAgentId 绑定校验
-
+            return jsonify({"ok": False, "msg": "Invalid joinKey."}), 403
 
         agents = load_agents_state()
-        target = next((a for a in agents if a.get("agentId") == agent_id and not a.get("isMain")), None)
+        target = next((item for item in agents if item.get("agentId") == agent_id and not item.get("isMain")), None)
         if not target:
-            return jsonify({"ok": False, "msg": "agent 未注册，请先 join"}), 404
+            return jsonify({"ok": False, "msg": "Agent is not registered. Join first."}), 404
 
-        # Auth check: only approved agents can push.
-        # Note: "offline" is a presence state (stale), not a revoked authorization.
-        # Allow offline agents to resume pushing and auto-promote them back to approved.
         auth_status = target.get("authStatus", "pending")
         if auth_status not in {"approved", "offline"}:
-            return jsonify({"ok": False, "msg": "agent 未获授权，请等待主人批准"}), 403
+            return jsonify({"ok": False, "msg": "Agent is not approved."}), 403
+
         if auth_status == "offline":
             target["authStatus"] = "approved"
             target["authApprovedAt"] = datetime.now().isoformat()
             target["authExpiresAt"] = (datetime.now() + timedelta(hours=24)).isoformat()
 
         if target.get("joinKey") != join_key:
-            return jsonify({"ok": False, "msg": "joinKey 不匹配"}), 403
+            return jsonify({"ok": False, "msg": "joinKey mismatch."}), 403
 
         target["state"] = state
         target["detail"] = detail
         if name:
             target["name"] = name
         target["updated_at"] = datetime.now().isoformat()
-        target["area"] = state_to_area(state)
+        target["area"] = AREA_BY_STATE.get(state, "lounge")
         target["source"] = "remote-openclaw"
         target["lastPushAt"] = datetime.now().isoformat()
 
         save_agents_state(agents)
         return jsonify({"ok": True, "agentId": agent_id, "area": target.get("area")})
-    except Exception as e:
-        return jsonify({"ok": False, "msg": str(e)}), 500
+    except Exception as exc:
+        return jsonify({"ok": False, "msg": str(exc)}), 500
 
 
 @app.route("/health", methods=["GET"])
 def health():
-    """Health check"""
     return jsonify({"status": "ok", "timestamp": datetime.now().isoformat()})
 
 
-@app.route("/yesterday-memo", methods=["GET"])
+@app.route("/memo/yesterday", methods=["GET"])
 def get_yesterday_memo():
-    """获取昨日小日记"""
+    """Return yesterday's memo or nearest available historical memo."""
     try:
-        # 先尝试找昨天的文件
-        yesterday_str = get_yesterday_date_str()
-        yesterday_file = os.path.join(MEMORY_DIR, f"{yesterday_str}.md")
-        
-        target_file = None
-        target_date = yesterday_str
-        
-        if os.path.exists(yesterday_file):
-            target_file = yesterday_file
-        else:
-            # 如果昨天没有，找最近的一天
-            if os.path.exists(MEMORY_DIR):
-                files = [f for f in os.listdir(MEMORY_DIR) if f.endswith(".md") and re.match(r"\d{4}-\d{2}-\d{2}\.md", f)]
-                if files:
-                    files.sort(reverse=True)
-                    # 跳过今天的（如果存在）
-                    today_str = datetime.now().strftime("%Y-%m-%d")
-                    for f in files:
-                        if f != f"{today_str}.md":
-                            target_file = os.path.join(MEMORY_DIR, f)
-                            target_date = f.replace(".md", "")
-                            break
-        
+        yesterday = get_yesterday_date_str()
+        target_file = os.path.join(MEMORY_DIR, f"{yesterday}.md")
+        target_date = yesterday
+
+        if not os.path.exists(target_file) and os.path.exists(MEMORY_DIR):
+            files = [
+                name
+                for name in os.listdir(MEMORY_DIR)
+                if name.endswith(".md") and re.match(r"\d{4}-\d{2}-\d{2}\.md", name)
+            ]
+            if files:
+                files.sort(reverse=True)
+                today = datetime.now().strftime("%Y-%m-%d")
+                for name in files:
+                    if name != f"{today}.md":
+                        target_file = os.path.join(MEMORY_DIR, name)
+                        target_date = name.replace(".md", "")
+                        break
+
         if target_file and os.path.exists(target_file):
-            memo_content = extract_memo_from_file(target_file)
-            return jsonify({
-                "success": True,
-                "date": target_date,
-                "memo": memo_content
-            })
-        else:
-            return jsonify({
-                "success": False,
-                "msg": "没有找到昨日日记"
-            })
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "msg": str(e)
-        }), 500
+            memo_text = extract_memo_from_file(target_file)
+            return jsonify({"success": True, "date": target_date, "memo": memo_text})
+
+        return jsonify({"success": False, "msg": "No memo found for yesterday."})
+    except Exception as exc:
+        return jsonify({"success": False, "msg": str(exc)}), 500
 
 
-@app.route("/set_state", methods=["POST"])
-def set_state_endpoint():
-    """Set state via POST (for UI control panel)"""
+@app.route("/state", methods=["POST"])
+def set_state():
+    """Update the main dashboard state from the control panel."""
     try:
         data = request.get_json()
         if not isinstance(data, dict):
-            return jsonify({"status": "error", "msg": "invalid json"}), 400
-        state = load_state()
+            return jsonify({"status": "error", "msg": "Invalid JSON payload."}), 400
+
+        state = load_main_state()
         if "state" in data:
-            s = data["state"]
-            valid_states = {"idle", "writing", "researching", "executing", "syncing", "error"}
-            if s in valid_states:
-                state["state"] = s
+            state["state"] = normalize_state(data["state"])
         if "detail" in data:
-            state["detail"] = data["detail"]
+            state["detail"] = str(data["detail"])
         state["updated_at"] = datetime.now().isoformat()
-        save_state(state)
+
+        save_main_state(state)
         return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"status": "error", "msg": str(e)}), 500
+    except Exception as exc:
+        return jsonify({"status": "error", "msg": str(exc)}), 500
 
 
 if __name__ == "__main__":
-    print("=" * 50)
-    print("Star Office UI - Backend State Service")
-    print("=" * 50)
+    print("=" * 60)
+    print("Star Office UI Backend Service")
+    print("=" * 60)
     print(f"State file: {STATE_FILE}")
     print("Listening on: http://0.0.0.0:18791")
-    print("=" * 50)
-    
+    print("=" * 60)
     app.run(host="0.0.0.0", port=18791, debug=False)

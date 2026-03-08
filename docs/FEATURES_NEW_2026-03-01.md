@@ -1,38 +1,37 @@
-# Star Office UI — 新增功能说明（本阶段）
+# Star Office UI — Feature Additions (Current Phase)
 
-## 1. 多龙虾访客系统
-- 支持多个远端 OpenClaw 同时加入同一办公室。
-- 访客支持独立头像、名字、状态、区域、气泡。
-- 支持动态上下线与实时刷新。
+## 1) Multi-guest agent support
+- Multiple remote OpenClaw agents can join one office.
+- Each guest has independent identity, name, state, area, and bubble copy.
+- Join/leave updates render in near real time.
 
-## 2. Join Key 机制升级
-- 从“一次性 key”升级为“固定可复用 key”。
-- 默认 key：`ocj_starteam01` ~ `ocj_starteam08`。
-- 保留安全控制：每个 key 的并发上限 `maxConcurrent`（默认 3）。
+## 2) Join key model update
+- Moved from one-time keys to reusable keys.
+- Default keys: `ocj_starteam01` to `ocj_starteam08`.
+- Per-key online concurrency limit remains configurable (`maxConcurrent`, default `3`).
 
-## 3. 并发控制（已修复竞态）
-- 修复并发 join 的竞态问题（race condition）。
-- 同 key 第 4 个并发 join 会被正确拒绝（HTTP 429）。
+## 3) Concurrency race fix
+- Fixed race conditions in join flow.
+- The 4th simultaneous join now correctly returns `HTTP 429` when limit is `3`.
 
-## 4. 访客状态映射与区域渲染
-- `idle -> breakroom`
-- `writing/researching/executing/syncing -> writing`
-- `error -> error`
-- 访客气泡文案与状态同步，不再错位。
+## 4) Canonical state-to-area mapping
+- `standby -> lounge`
+- `working/research/running/sync -> workzone`
+- `incident -> incident_bay`
 
-## 5. 访客动画与资源优化
-- 访客由静态图升级为动画精灵（像素风）。
-- `guest_anim_1~6` 已提供 webp 版本，减少加载体积。
+## 5) Guest animation optimization
+- Guests render as animated sprites instead of static icons.
+- WebP variants reduce asset size and load time.
 
-## 6. 名字与气泡显示优化
-- 非 demo 访客名字与气泡位置上移，避免角色遮挡。
-- 气泡锚点改为基于名字定位，保障“气泡在名字上方”。
+## 6) Name and bubble clarity improvements
+- Guest name/bubble positioning avoids overlap.
+- Bubble anchoring now remains visually stable above labels.
 
-## 7. 移动端展示
-- 页面可在手机端直接访问与展示。
-- 布局已进行基础移动端适配，满足演示场景。
+## 7) Mobile display support
+- Dashboard is directly viewable on mobile browsers.
+- Responsive layout pass improves presentation for demos.
 
-## 8. 远端推送脚本联调改进
-- 支持从状态文件读取并推送状态到 office。
-- 增加状态来源诊断日志（用于定位“为何一直 idle”）。
-- 修复 AGENT_NAME 环境变量覆盖时序问题。
+## 8) Remote push script improvements
+- Agent push script can read from local state files.
+- Source diagnostics improved for easier troubleshooting.
+- Environment-variable overrides are resolved consistently.

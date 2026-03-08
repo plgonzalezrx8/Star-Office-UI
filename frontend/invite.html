@@ -1,159 +1,151 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>海辛办公室 - 加入邀请</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 40px;
-            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-            background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
-            min-height: 100vh;
-            box-sizing: border-box;
-        }
-        .card {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 48px;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
-        }
-        h1 {
-            margin-top: 0;
-            color: #111827;
-            font-size: 28px;
-        }
-        h2 {
-            margin-top: 32px;
-            color: #1f2937;
-            font-size: 18px;
-        }
-        p, li {
-            color: #374151;
-            line-height: 1.8;
-        }
-        .steps {
-            background: #f9fafb;
-            padding: 24px;
-            border-radius: 12px;
-            margin: 16px 0;
-        }
-        .step {
-            display: flex;
-            gap: 16px;
-            margin-bottom: 16px;
-        }
-        .step:last-child {
-            margin-bottom: 0;
-        }
-        .step-num {
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            background: #3b82f6;
-            color: white;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            font-size: 14px;
-        }
-        .step-text {
-            flex: 1;
-        }
-        .step-text strong {
-            color: #111827;
-        }
-        .join-link {
-            background: #f3f4f6;
-            padding: 16px;
-            border-radius: 8px;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            font-size: 14px;
-            word-break: break-all;
-            margin-top: 8px;
-        }
-        .note {
-            margin-top: 24px;
-            padding: 16px;
-            border-left: 4px solid #f59e0b;
-            background: #fffbeb;
-            border-radius: 0 8px 8px 0;
-        }
-        .note strong {
-            color: #92400e;
-        }
-        .footer {
-            margin-top: 32px;
-            padding-top: 24px;
-            border-top: 1px solid #e5e7eb;
-            color: #6b7280;
-            font-size: 14px;
-        }
-        .back-btn {
-            display: inline-block;
-            margin-top: 24px;
-            padding: 12px 24px;
-            background: #3b82f6;
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 500;
-        }
-        .back-btn:hover {
-            background: #2563eb;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Star Lobster Office Invite</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: #111827;
+    }
+
+    .card {
+      max-width: 820px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+      padding: 42px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+    }
+
+    h2 {
+      margin-top: 30px;
+      margin-bottom: 10px;
+      font-size: 20px;
+    }
+
+    p,
+    li {
+      color: #374151;
+      line-height: 1.7;
+    }
+
+    .steps {
+      background: #f9fafb;
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-top: 10px;
+    }
+
+    .step {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+
+    .step:last-child {
+      margin-bottom: 0;
+    }
+
+    .num {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: #3b82f6;
+      color: #fff;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 14px;
+    }
+
+    .note {
+      margin-top: 22px;
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+      border-radius: 0 8px 8px 0;
+      padding: 14px 16px;
+    }
+
+    .back-btn {
+      display: inline-block;
+      margin-top: 24px;
+      background: #3b82f6;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-weight: 600;
+    }
+
+    .back-btn:hover {
+      background: #2563eb;
+    }
+
+    .footer {
+      margin-top: 28px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 18px;
+      color: #6b7280;
+      font-size: 14px;
+    }
+  </style>
 </head>
 <body>
-    <div class="card">
-        <h1>✨ 海辛办公室 · 加入邀请</h1>
-        <p>欢迎加入海辛的像素办公室看板！</p>
+  <div class="card">
+    <h1>Star Lobster Office Invite</h1>
+    <p>Share this with teammates who want their OpenClaw agent visible on your office dashboard.</p>
 
-        <h2>加入步骤（一共 3 步）</h2>
-        <div class="steps">
-            <div class="step">
-                <div class="step-num">1</div>
-                <div class="step-text">
-                    <strong>确认信息</strong><br>
-                    你应该已经收到两样东西：
-                    <ul>
-                        <li>邀请链接：<code>https://office.example.com/join</code></li>
-                        <li>一次性接入密钥（join key）：<code>ocj_xxx</code></li>
-                    </ul>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-num">2</div>
-                <div class="step-text">
-                    <strong>把邀请信息丢给你的 OpenClaw</strong><br>
-                    把邀请链接 + join key 一起发给你的 OpenClaw，并说“帮我加入海辛办公室”。
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-num">3</div>
-                <div class="step-text">
-                    <strong>在你这边授权</strong><br>
-                    你的 OpenClaw 会在对话里向你要授权；同意后，它就会开始自动把工作状态推送到海辛办公室看板啦！
-                </div>
-            </div>
+    <h2>Quick Onboarding (3 steps)</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <div>
+          <strong>Share invite details</strong>
+          <ul>
+            <li>Join link: <code>https://office.example.com/join</code></li>
+            <li>One-time join key: <code>ocj_xxx</code></li>
+          </ul>
         </div>
+      </div>
 
-        <div class="note">
-            <strong>⚠️  隐私说明</strong><br>
-            只推送状态（idle/writing/researching/executing/syncing/error），不含任何具体内容/隐私；随时可停。
+      <div class="step">
+        <div class="num">2</div>
+        <div>
+          <strong>Ask them to run OpenClaw setup</strong><br>
+          Send both the join link and join key, and ask them to connect their OpenClaw agent.
         </div>
+      </div>
 
-        <a href="/" class="back-btn">← 回到海辛办公室</a>
-
-        <div class="footer">
-            海辛工作室 · 像素办公室看板<br>
-            有问题找海辛 😊
+      <div class="step">
+        <div class="num">3</div>
+        <div>
+          <strong>Approve and monitor</strong><br>
+          Once approved, their agent will push state updates automatically and appear on the office board.
         </div>
+      </div>
     </div>
+
+    <div class="note">
+      <strong>Privacy note:</strong> only state metadata is pushed (for example <code>standby/working/research/running/sync/incident</code>). No private task content is required.
+    </div>
+
+    <a href="/" class="back-btn">Back to Office Dashboard</a>
+
+    <div class="footer">
+      Star Lobster Studio - Pixel Office Dashboard
+    </div>
+  </div>
 </body>
 </html>
